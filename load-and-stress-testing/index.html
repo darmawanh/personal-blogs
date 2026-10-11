@@ -224,8 +224,7 @@ Server handles ~25/s → the other 25 pile up in a queue</code></pre>
 
   <p>The requirement flows all the way through to production:</p>
 
-<pre><code>requirement      → target            → threshold (in the test) → alert (prod)
-"p95 &lt; 300ms"      "99% under 300ms"   p(95)&lt;300                 burn-rate alert</code></pre>
+<div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/flow-1.png" alt="The requirement flows through to production: requirement &quot;p95 &lt; 300ms&quot; to target &quot;99% under 300ms&quot; to threshold p(95)&lt;300 to burn-rate alert"></div>
 
   <p><strong>The trap I've hit more than once:</strong> a threshold with no requirement behind it is a <strong>guess</strong>. I once set a p95 threshold so loose that it passed against a result a hundred-odd times better than it — a green ✓ that proved nothing. <strong>A threshold is only useful if it can fail.</strong></p>
 
