@@ -129,7 +129,7 @@
 
   <p>Whatever the type, a performance test answers exactly four questions:</p>
 
-  <div class="tableimg"><img src="img/table-1.png" alt="The four questions every test answers: throughput, latency, errors, saturation"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-1.png" alt="The four questions every test answers: throughput, latency, errors, saturation"></div>
 
   <p>If a test doesn't produce those four numbers, it isn't finished.</p>
 
@@ -155,7 +155,7 @@ Server B: 99% wait 10ms, 1% wait 9s   average = 100ms</code></pre>
   <p><strong>My rule: p95 and p99 are what I report and what I alert on. The average is for dashboards nobody acts on.</strong></p>
 
   <figure>
-    <img src="img/s10.png" alt="A result with a wide p95/p99 gap">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s10.png" alt="A result with a wide p95/p99 gap">
     <p class="cap"><em>What to look at: the gap between p95 and p99. A small slice of requests is far slower than the rest — and a plain average would have hidden every one of them.</em></p>
   </figure>
 
@@ -201,7 +201,7 @@ Server handles ~25/s → the other 25 pile up in a queue</code></pre>
   <p>Then there's the <strong>knee</strong>:</p>
 
   <figure>
-    <img src="img/s12.png" alt="Latency vs load graph, with the knee marked">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s12.png" alt="Latency vs load graph, with the knee marked">
     <p class="cap"><em>What to look at: where the line bends. Left of the dashed mark, latency is flat — more load, same speed. Right of it, latency climbs steeply. That bend is the knee.</em></p>
   </figure>
 
@@ -248,13 +248,13 @@ export default function () { ... }  // WHAT one user does, once</code></pre>
 
   <p>An <strong>executor</strong> is the kind of load pattern. k6 has six:</p>
 
-  <div class="tableimg"><img src="img/table-2.png" alt="The six k6 executors: shared-iterations, per-vu-iterations, constant-vus, ramping-vus, constant-arrival-rate, ramping-arrival-rate"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-2.png" alt="The six k6 executors: shared-iterations, per-vu-iterations, constant-vus, ramping-vus, constant-arrival-rate, ramping-arrival-rate"></div>
 
   <p><strong>How I choose, in one question:</strong> <em>do I know the traffic, or do I know the users?</em> For an API, I know the traffic — requests arrive whether or not the server keeps up. So I use an arrival-rate executor.</p>
 
   <p>Which executor for which test:</p>
 
-  <div class="tableimg"><img src="img/table-3.png" alt="Which executor for which test: smoke, baseline/load, stress, spike"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-3.png" alt="Which executor for which test: smoke, baseline/load, stress, spike"></div>
 
   <h2>The Key Parameters</h2>
 
@@ -301,13 +301,13 @@ export default function () { ... }  // WHAT one user does, once</code></pre>
 
   <p>Aggregations depend on the metric type:</p>
 
-  <div class="tableimg"><img src="img/table-4.png" alt="Aggregations by metric type: Counter, Gauge, Rate, Trend"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-4.png" alt="Aggregations by metric type: Counter, Gauge, Rate, Trend"></div>
 
   <p><code>p(N)</code> is a percentile, 0–100, <strong>in milliseconds</strong>.</p>
 
   <h2>The Metrics k6 Gives You Free</h2>
 
-  <div class="tableimg"><img src="img/table-5.png" alt="The metrics k6 gives you free: http_reqs, http_req_duration, http_req_failed, and the request phase breakdown"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-5.png" alt="The metrics k6 gives you free: http_reqs, http_req_duration, http_req_failed, and the request phase breakdown"></div>
 
   <p>Two things I always point out:</p>
 
@@ -318,7 +318,7 @@ export default function () { ... }  // WHAT one user does, once</code></pre>
 
   <p>Reading the phases tells me which class of layer is at fault:</p>
 
-  <div class="tableimg"><img src="img/table-6.png" alt="Dominant phase: waiting blames the server, connecting blames the network, blocked blames the test rig"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-6.png" alt="Dominant phase: waiting blames the server, connecting blames the network, blocked blames the test rig"></div>
 
   <h2>Custom Metrics</h2>
 
@@ -348,12 +348,12 @@ export default function () {
   <p>The numbers are demo-scale on purpose. <strong>The methodology is what scales, not the rate.</strong></p>
 
   <figure>
-    <img src="img/s1.png" alt="The demo stack running in Docker">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s1.png" alt="The demo stack running in Docker">
     <p class="cap"><em>What to look at: two services up — the app and its datastore. Everything below runs against this stack.</em></p>
   </figure>
 
   <figure>
-    <img src="img/s2.png" alt="The app's endpoint table / README">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s2.png" alt="The app's endpoint table / README">
     <p class="cap"><em>What to look at: which endpoints need a session token. Every one except health and products does — which is why a test that skips login gets a 401, not a number.</em></p>
   </figure>
 
@@ -398,7 +398,7 @@ export default function () {
   <p>Note <code>constant-vus</code> (the default when you just set <code>vus</code>) — a closed model is fine here. I'm not looking for a breaking point, only "does it work at all."</p>
 
   <figure>
-    <img src="img/s3.png" alt="k6 smoke test output — all green">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s3.png" alt="k6 smoke test output — all green">
     <p class="cap"><em>What to look at: <code>checks</code> at 100% and <code>http_req_failed</code> at 0%. That's the only question this run asks — does the endpoint answer at all? Latency is deliberately loose here.</em></p>
   </figure>
 
@@ -479,12 +479,12 @@ export function setup() {
   <p><strong>The baseline passed:</strong> throughput held at 19.8 req/s, p95 <strong>151.1ms</strong> (target 300ms), error rate 0%, and <code>dropped_iterations</code> at zero.</p>
 
   <figure>
-    <img src="img/s4.png" alt="The seed script running">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s4.png" alt="The seed script running">
     <p class="cap"><em>What to look at: 200 users and 100,000 carts created in one call — the pool the load will draw from.</em></p>
   </figure>
 
   <figure>
-    <img src="img/s5.png" alt="k6 baseline output — p95 highlighted">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s5.png" alt="k6 baseline output — p95 highlighted">
     <p class="cap"><em>What to look at: <code>http_req_duration</code> p95 against the 300ms target, plus <code>dropped_iterations</code> at zero — nothing was refused.</em></p>
   </figure>
 
@@ -528,7 +528,7 @@ scenarios: {
 
   <p><strong>And it matched.</strong> The ramp kept asking for more — up to 80 req/s — but the <em>delivered</em> throughput stopped at around <strong>50 req/s</strong>, almost exactly the number I predicted, while p95 climbed from a flat <strong>102ms into the seconds</strong>:</p>
 
-  <div class="tableimg"><img src="img/table-7.png" alt="Offered vs delivered throughput and p95 latency across the ramp, with the knee marked"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-7.png" alt="Offered vs delivered throughput and p95 latency across the ramp, with the knee marked"></div>
 
   <p>Look at what happens past the knee. The ramp asked for 57, then 67 — and the app didn't just stop at 50, it <strong>delivered <em>less</em></strong>: 49.5, then 44.5. The queue got so backed up that requests took so long to finish that fewer completed at all. That's the overload collapse: <strong>offered rate up, delivered rate down.</strong></p>
 
@@ -537,12 +537,12 @@ scenarios: {
   <p>(One honesty note: those past-the-knee numbers move between runs. Across the runs I did, the delivered rate once past the knee sat somewhere in the <strong>44–50</strong> range, and the exact digits shift every time. The <em>shape</em> is stable — flat, then the bend, then the fall — even when the numbers move. That's why I report the shape and the prediction, not a single heroic number.)</p>
 
   <figure>
-    <img src="img/s6.png" alt="The ramp — active VUs climbing past the knee">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s6.png" alt="The ramp — active VUs climbing past the knee">
     <p class="cap"><em>What to look at: the VUs column. It sits at 1–5 while the app keeps up, then explodes — 16, then 87, then 175 — as requests start queuing. The <code>iters/s</code> column on the right is the <strong>offered</strong> rate, still climbing to ~77 while the app delivers only ~50. That widening gap is the knee.</em></p>
   </figure>
 
   <figure>
-    <img src="img/s7.png" alt="Latency vs load — the curve bending">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s7.png" alt="Latency vs load — the curve bending">
     <p class="cap"><em>What to look at: the flat stretch, then the bend. Latency holds near 100ms below the knee and shoots into the seconds above it — the same story the VU column told, drawn as a curve.</em></p>
   </figure>
 
@@ -584,7 +584,7 @@ MIX=all-heavy  k6 run 04-mix.js</code></pre>
 
   <p>Same endpoint, same rate, same threshold. Only the mix moves.</p>
 
-  <div class="tableimg"><img src="img/table-8.png" alt="The three-mix comparison: p50, p95, p99 and whether each passes p95 < 300ms"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-8.png" alt="The three-mix comparison: p50, p95, p99 and whether each passes p95 < 300ms"></div>
 
   <p><strong>Measured: p50 stays flat (56ms) while p99 moves roughly ten times (56.9ms → 551.1ms).</strong> The small fraction of heavy carts defines the tail.</p>
 
@@ -594,22 +594,22 @@ MIX=all-heavy  k6 run 04-mix.js</code></pre>
 
   <p>And here's the instability I found. Same realistic mix, same code, three runs — only the random seed changed:</p>
 
-  <div class="tableimg"><img src="img/table-9.png" alt="Three runs of the same realistic mix, showing p99 flipping between ~154ms and ~551ms"></div>
+  <div class="tableimg"><img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/table-9.png" alt="Three runs of the same realistic mix, showing p99 flipping between ~154ms and ~551ms"></div>
 
   <p>p99 <strong>flipped between runs</strong>, because ~1% of requests are heavy and p99 sits right on that boundary — the 99th percentile either lands on a heavy request or it doesn't. <strong>So I report several percentiles, and I say when a number is marginal.</strong></p>
 
   <figure>
-    <img src="img/s8a.png" alt="The three-mix comparison — all-small">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s8a.png" alt="The three-mix comparison — all-small">
     <p class="cap"><em>Mix 1 of 3 — <strong>all-small</strong> (every cart 1 item). p50/p95/p99 all sit at ≈56ms. No heavy carts, so no tail; passes the threshold with room to spare.</em></p>
   </figure>
 
   <figure>
-    <img src="img/s8b.png" alt="The three-mix comparison — realistic">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s8b.png" alt="The three-mix comparison — realistic">
     <p class="cap"><em>Mix 2 of 3 — <strong>realistic</strong> (60/30/9/1%). p50 stays flat at ≈56ms, but p99 jumps to ≈551ms. p95 passes the 300ms bar, p99 breaches it — the 1% of heavy carts lands exactly where p99 looks.</em></p>
   </figure>
 
   <figure>
-    <img src="img/s8c.png" alt="The three-mix comparison — all-heavy">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s8c.png" alt="The three-mix comparison — all-heavy">
     <p class="cap"><em>Mix 3 of 3 — <strong>all-heavy</strong> (every cart 100 items). Now even p50 is ≈551ms — the whole distribution shifts and it fails outright.</em></p>
   </figure>
 
@@ -656,7 +656,7 @@ scenarios: {
   <p>(It plateaus at ~90, not 100, because 1-item carts take ~55ms — and 5 ÷ 0.055 ≈ 90. The same arithmetic again.)</p>
 
   <figure>
-    <img src="img/s9.png" alt="Spike test output and recovery">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s9.png" alt="Spike test output and recovery">
     <p class="cap"><em>What to look at: two things — <code>http_req_failed</code> staying at 0% (it survived the surge), and the rate falling back to the pre-spike level at the end (it recovered). A spike you survive but never come down from is still down.</em></p>
   </figure>
 
@@ -696,7 +696,7 @@ scenarios: {
   <p><strong>The lesson: a latency number is only meaningful when the error rate is near zero.</strong> Before I trust a duration, I read <code>http_req_failed</code> and <code>checks</code> first. A green p95 on a 93%-failed run is worse than no number at all — it's a false pass.</p>
 
   <figure>
-    <img src="img/s11.png" alt="Terminal showing dropped_iterations">
+    <img src="https://darmawanh.github.io/personal-blogs/load-and-stress-testing/img/s11.png" alt="Terminal showing dropped_iterations">
     <p class="cap"><em>What to look at: the summary block. <code>checks</code> at 100% and <code>http_req_failed</code> at 0% say the run was valid; <code>✗ http_req_duration</code> p(95)=3.64s is the knee going red on purpose; and <code>dropped_iterations: 362</code> is the proof — the ramp offered more than the app could accept. Read the first two lines before you trust the third.</em></p>
   </figure>
 
