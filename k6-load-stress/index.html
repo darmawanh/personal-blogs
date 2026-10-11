@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A Practical Guide to Load and Stress Testing: Fundamentals and k6</title>
+<style>
+  :root{ --ink:#242424; --muted:#6b6b6b; --line:#e6e6e6; --code-bg:#f7f7f7; --accent:#1a8917; }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:#fff; color:var(--ink);
+    font-family:Georgia,Cambria,"Times New Roman",serif;
+    font-size:20px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:740px;margin:0 auto;padding:48px 24px 96px}
+  .kicker{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  h1{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:40px;line-height:1.18;letter-spacing:-.015em;font-weight:800;margin:14px 0 8px}
+  .byline{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;color:var(--muted);margin:0 0 34px}
+  h2{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:27px;line-height:1.25;font-weight:750;letter-spacing:-.01em;margin:52px 0 14px}
+  h3{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:21px;line-height:1.3;font-weight:700;margin:40px 0 12px}
+  p{margin:0 0 22px}
+  a{color:inherit}
+  strong{font-weight:700}
+  em{font-style:italic}
+  blockquote{margin:26px 0;padding-left:20px;border-left:3px solid #d0d0d0;color:#4a4a4a;font-style:italic}
+  hr{border:0;border-top:1px solid var(--line);margin:44px 0}
+  ul{margin:0 0 22px;padding-left:26px}
+  li{margin:0 0 10px}
+  pre{
+    background:var(--code-bg);border:1px solid var(--line);border-radius:6px;
+    padding:16px 18px;overflow-x:auto;margin:0 0 24px;
+    font-family:"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    font-size:13.5px;line-height:1.55;color:#1f1f1f;
+  }
+  pre code{font-family:inherit;white-space:pre}
+  code{font-family:"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:.86em;
+    background:#f2f2f2;padding:2px 5px;border-radius:4px}
+  pre code{background:none;padding:0;font-size:inherit}
+  img{display:block;width:100%;height:auto;border-radius:4px;margin:0 0 10px}
+  figure{margin:34px 0}
+  .cap{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:14.5px;line-height:1.55;color:var(--muted);margin:0 0 26px}
+  .cap strong{color:#3a3a3a}
+  .tableimg{background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px}
+  .tableimg img{margin:0;border-radius:4px}
+</style>
+</head>
+<body>
+<main class="page">
+
+  <div class="kicker">Performance Testing</div>
+  <h1>A Practical Guide to Load and Stress Testing: Fundamentals and k6</h1>
+  <p class="byline">Darmawan Hadiprasetyo &middot; Software Development Engineer in Test</p>
+
+  <p>Greetings, my name is Darmawan, and I am a Software Development Engineer in Test (SDET). I've spent my career in testing, building test frameworks and test architecture from scratch. More recently that work has centered on <strong>AI test infrastructure</strong> — the platform layer AI-assisted testing runs on — and on putting AI-assisted testing into practice. One question comes up again and again, deceptively simple:</p>
+
+  <p><em>"Can you make sure this survives?"</em></p>
+
+  <p>That question is the start of every load test I run. And the answer is never a tool. It's a number.</p>
+
+  <p>In this article, we'll walk through how I do performance testing end to end: the core vocabulary every tester needs first, how I gather the requirement, and how I run load and stress tests in <strong>k6</strong>. The tool is the easy part — the concepts are the subject, and they stay the same whichever tool you pick. Let's start with the ticket that lands on my desk most often.</p>
+
+  <hr>
+
+  <h2>The Ticket That Starts It All</h2>
+
+  <p>A product manager drops me a message:</p>
+
+  <blockquote>"Black Friday is in three weeks, and checkout needs to survive it. Can you test it?"</blockquote>
+
+  <p>I've done this enough times to know the first thing I need isn't a tool. It's a number.</p>
+
+  <p>A flash sale isn't steady traffic. It's a <strong>spike</strong> — a wall of people arriving in the same minute, hammering the same path: browse, add to cart, check out, pay. "It works in staging" tells me nothing about that minute. So before I open a load-testing tool, before I write a single line of script, I go and find out what "survive" actually means in numbers.</p>
+
+  <h2>The Vocabulary You Need First</h2>
+
+  <p>Before we touch a tool, let me define the terms I'll use for the rest of this article. These concepts are the same whether you use k6, JMeter, Gatling, or Locust — the tool changes, the vocabulary doesn't. If you remember nothing else, remember these.</p>
+
+  <p><strong>Virtual User (VU).</strong> A VU is one simulated user. It's a lightweight worker inside your load tool that behaves like a real person: it sends a request, waits for the reply, thinks for a moment, then sends the next one. When someone says "run 100 VUs," they mean 100 simulated users hitting the system at the same time.</p>
+
+  <p><strong>Iteration.</strong> One full pass through what a VU does — one loop of the script. If a VU logs in, adds to cart, and checks out, that whole sequence is one iteration. A test's total work is roughly <em>VUs × iterations</em>.</p>
+
+  <p><strong>Ramp-up.</strong> Instead of slamming the system with all VUs at once, I bring them up gradually. Ramp-up is the time it takes to go from zero (or a low number) to the target number of users. Ramping up mimics how real traffic arrives — people trickle in, they don't all appear at once.</p>
+
+  <p><strong>Throughput.</strong> How much work the system handled per unit of time, usually measured in requests per second (req/s or RPS). This is the "how much did it do" number.</p>
+
+  <p><strong>Latency (response time).</strong> How long a single request took, from sending it to getting the full reply. Reported in milliseconds, and always as a distribution — p50, p95, p99 — never as a plain average (we'll see why in a moment).</p>
+
+  <p><strong>Think time.</strong> The pause between one user action and the next — the seconds a real person spends reading the page or deciding what to click. Without think time, your VUs hammer the server like robots, and you test a scenario no real user creates.</p>
+
+  <p><strong>Concurrency.</strong> How many requests are in flight at the exact same moment. This is not the same as throughput: throughput is per second, concurrency is instantaneous. Ten users each waiting on a slow 2-second request is 10 concurrent requests, even if the throughput is only 5 req/s.</p>
+
+  <p><strong>Error rate.</strong> The fraction of requests that failed — timeouts, 5xx responses, connection drops. A test that hits its latency target but fails 20% of requests has not passed.</p>
+
+  <p>And the four <strong>types of test</strong> I'll refer to by name, since they answer different questions:</p>
+
+  <ul>
+    <li><strong>Smoke test</strong> — one or two users, a minute. The question: <em>does it work at all?</em> I run this before anything else.</li>
+    <li><strong>Load test</strong> — expected production traffic, held steady. The question: <em>does it meet the target?</em></li>
+    <li><strong>Stress test</strong> — traffic ramped past capacity until it breaks. The question: <em>where's the limit?</em></li>
+    <li><strong>Spike test</strong> — a sudden huge jump in traffic, then a drop. The question: <em>does it survive a surge?</em></li>
+  </ul>
+
+  <p>Those eight vocabulary terms and four test types are the foundation. Everything else in this article builds on them.</p>
+
+  <h2>What Performance Testing Actually Is</h2>
+
+  <p>Performance testing is the umbrella discipline: <strong>proving a system meets its performance requirements, and finding the limits where it stops meeting them.</strong> Under that umbrella sit many kinds of test — smoke, load, stress, spike, soak, volume, scalability, capacity, breakpoint, regression, and more. Each answers a different question, and a serious testing effort uses several of them.</p>
+
+  <p><strong>In this article, I'm focusing on two of them: load testing and stress testing.</strong> They're the two I reach for most, and they cover the core questions — <em>does it meet the target?</em> and <em>where does it break?</em> Once you understand these two, the others become variations on the same theme.</p>
+
+  <p>I think about these two in terms of two halves:</p>
+
+  <ul>
+    <li><strong>Verification</strong> — does the system meet the target we agreed on? <em>(load testing)</em></li>
+    <li><strong>Exploration</strong> — where does it stop meeting it, and why? <em>(stress testing)</em></li>
+  </ul>
+
+  <p>Neither half is the whole of performance testing — but together they answer the question the ticket started with: <em>will this survive?</em></p>
+
+  <h2>The Four Questions Every Test Answers</h2>
+
+  <p>Whatever the type, a performance test answers exactly four questions:</p>
+
+  <div class="tableimg"><img src="img/table-1.png" alt="The four questions every test answers: throughput, latency, errors, saturation"></div>
+
+  <p>If a test doesn't produce those four numbers, it isn't finished.</p>
+
+  <h2>Why the Average Lies</h2>
+
+  <p>This is the single most important idea in performance testing, and it's why I never report an average.</p>
+
+<pre><code>Server A: everyone waits 100ms        average = 100ms
+Server B: 99% wait 10ms, 1% wait 9s   average = 100ms</code></pre>
+
+  <p>Same average. Completely different systems. Server B is on fire — one in a hundred users is waiting nine seconds, and the average hides every one of them.</p>
+
+  <p>It's like describing a city's weather by its yearly average. Comfortable on paper — and it tells you nothing about the day the river flooded.</p>
+
+  <p>That's what percentiles are for:</p>
+
+  <ul>
+    <li><strong>p50</strong> (median) — half the requests were faster than this.</li>
+    <li><strong>p95</strong> — 95% were faster; the worst 5% are above it.</li>
+    <li><strong>p99</strong> — 99% were faster; the worst 1% are above it.</li>
+  </ul>
+
+  <p><strong>My rule: p95 and p99 are what I report and what I alert on. The average is for dashboards nobody acts on.</strong></p>
+
+  <figure>
+    <img src="img/s10.png" alt="A result with a wide p95/p99 gap">
+    <p class="cap"><em>What to look at: the gap between p95 and p99. A small slice of requests is far slower than the rest — and a plain average would have hidden every one of them.</em></p>
+  </figure>
+
+  <h2>Open vs Closed Models</h2>
+
+  <p>This one is subtle, and it decides whether your test can find a breaking point at all. It comes down to one question: <strong>when the server slows down, does your test slow down with it — or does it keep pushing?</strong></p>
+
+  <ul>
+    <li><strong>Closed model:</strong> you set the number of <strong>users</strong>. Each user sends a request, waits for the reply, then sends the next. The request <em>rate</em> depends on how fast the server answers.</li>
+    <li><strong>Open model:</strong> you set the <strong>requests per second</strong>. The tool offers that rate regardless of what the server does.</li>
+  </ul>
+
+  <p>Let's make that concrete with a small example. Say I want to load a checkout API that normally takes 200ms, and I want 50 requests per second. On a healthy server, 50 users each looping <em>send → wait 200ms → send</em> will naturally produce about 50 requests per second. So far, both models look identical.</p>
+
+  <p>Now the server slows down. Each checkout now takes <strong>2 seconds</strong> instead of 200ms. Watch what each model does:</p>
+
+  <p><strong>Closed model — 50 users, each waiting for the reply:</strong></p>
+
+<pre><code>Each user:  send → wait 2s → send → wait 2s → ...
+50 users × (1 request every 2s) = 25 req/s</code></pre>
+
+  <p>The rate <strong>halved</strong>, from 50 req/s to 25 req/s — without anyone asking it to. The users are still there, but they're stuck waiting, so they send fewer requests. My test just quietly reduced the load, right when the system was struggling. If the server got even slower, the load would drop even further. <strong>The test protects the server from the very overload I'm trying to create.</strong></p>
+
+  <p><strong>Open model — 50 requests per second, offered no matter what:</strong></p>
+
+<pre><code>Every second:  the tool fires 50 new requests, finished or not
+Server handles ~25/s → the other 25 pile up in a queue</code></pre>
+
+  <p>The tool keeps offering 50 req/s. The server can only handle 25, so <strong>requests queue up</strong>. The queue grows, waiting time grows with it, and eventually requests time out or the system falls over. <strong>That's the failure I'm trying to find</strong> — and only the open model exposes it.</p>
+
+  <p>A closed model reduces load exactly when you most want to see the pressure build. It's a thermometer that cools down when you put it in hot water.</p>
+
+  <p>So: <strong>to find where a system breaks, use an open model.</strong> Remember this — it comes back when we pick an executor in k6.</p>
+
+  <h2>Little's Law and the Knee</h2>
+
+  <p>There's one equation behind capacity planning, and it's worth memorising:</p>
+
+<pre><code>concurrency = arrival rate × latency</code></pre>
+
+  <p>Concurrency is how many requests are in flight at once. It tells me how many requests must be in flight to sustain a rate — and therefore how much capacity I need. If I want 50 req/s and each request takes 0.2s, then 50 × 0.2 = 10 requests are in flight at any moment. I need to be able to hold 10.</p>
+
+  <p>Then there's the <strong>knee</strong>:</p>
+
+  <figure>
+    <img src="img/s12.png" alt="Latency vs load graph, with the knee marked">
+    <p class="cap"><em>What to look at: where the line bends. Left of the dashed mark, latency is flat — more load, same speed. Right of it, latency climbs steeply. That bend is the knee.</em></p>
+  </figure>
+
+  <p>Think of a car engine. Up to a point, pressing the pedal gives you more speed. Then you hit the limit — the pedal does nothing more, and the engine just strains. Below the knee, latency is flat: the system absorbs more traffic without getting slower. At the knee it starts to climb. Past it, it explodes.</p>
+
+  <p><strong>Finding that bend is the entire point of a stress test</strong> — which is why I ramp the load rather than hold it constant. A constant load can only tell me whether one point is fine. A ramp finds the edge.</p>
+
+  <h2>Gathering the Requirement</h2>
+
+  <p><strong>I cannot test performance without a number.</strong> "It should be fast" is not testable. "p95 &lt; 300ms at 20 req/s" is.</p>
+
+  <p>Where the number comes from, and what I ask:</p>
+
+  <ul>
+    <li><strong>Product/business:</strong> "How many users at peak? Over how long?"</li>
+    <li><strong>The mix:</strong> "What will most people be doing?"</li>
+    <li><strong>Existing data:</strong> analytics or logs from a previous sale, if they exist.</li>
+    <li><strong>If nobody knows:</strong> I propose a number, get it agreed, and write it down.</li>
+  </ul>
+
+  <p>The requirement flows all the way through to production:</p>
+
+<pre><code>requirement      → target            → threshold (in the test) → alert (prod)
+"p95 &lt; 300ms"      "99% under 300ms"   p(95)&lt;300                 burn-rate alert</code></pre>
+
+  <p><strong>The trap I've hit more than once:</strong> a threshold with no requirement behind it is a <strong>guess</strong>. I once set a p95 threshold so loose that it passed against a result a hundred-odd times better than it — a green ✓ that proved nothing. <strong>A threshold is only useful if it can fail.</strong></p>
+
+  <hr>
+
+  <h2>Part 2 — k6, Practice, and a Demo</h2>
+
+  <p>Now that the concepts are in place, let's look at the tool. In this section, we'll cover the k6 fundamentals you actually need, then run them against a small demo so you can see every step produce a real number.</p>
+
+  <h2>k6 in a Nutshell</h2>
+
+  <p>Every k6 script has two parts:</p>
+
+<pre><code>export const options = { ... }      // HOW to run: load shape, thresholds
+export default function () { ... }  // WHAT one user does, once</code></pre>
+
+  <p><code>options</code> is <strong>declarative</strong> — k6 reads it and configures the run. <code>default()</code> is the <strong>work</strong> — the loop body. There's also <code>setup()</code>, which runs once before the load, and <code>teardown()</code>, which runs once after.</p>
+
+  <h2>Executors — The Six Load Shapes</h2>
+
+  <p>An <strong>executor</strong> is the kind of load pattern. k6 has six:</p>
+
+  <div class="tableimg"><img src="img/table-2.png" alt="The six k6 executors: shared-iterations, per-vu-iterations, constant-vus, ramping-vus, constant-arrival-rate, ramping-arrival-rate"></div>
+
+  <p><strong>How I choose, in one question:</strong> <em>do I know the traffic, or do I know the users?</em> For an API, I know the traffic — requests arrive whether or not the server keeps up. So I use an arrival-rate executor.</p>
+
+  <p>Which executor for which test:</p>
+
+  <div class="tableimg"><img src="img/table-3.png" alt="Which executor for which test: smoke, baseline/load, stress, spike"></div>
+
+  <h2>The Key Parameters</h2>
+
+<pre><code>ramping-arrival-rate: {
+  startRate: 5,
+  timeUnit: '1s',            // rates are PER SECOND
+  preAllocatedVUs: 50,
+  maxVUs: 200,
+  stages: [
+    { duration: '15s', target: 20 },
+    { duration: '30s', target: 60 },
+    { duration: '30s', target: 100 },
+    { duration: '15s', target: 0 },
+  ],
+}</code></pre>
+
+  <ul>
+    <li><strong><code>timeUnit</code></strong> sets the scale for every number. <code>startRate: 5, timeUnit: '1s'</code> means 5 req/s; <code>'1m'</code> means 5 req/min — twelve times less.</li>
+    <li><strong><code>preAllocatedVUs</code></strong> — VUs created up front (allocating is expensive).</li>
+    <li><strong><code>maxVUs</code></strong> — the ceiling k6 may grow to if the rate needs more.</li>
+    <li><strong><code>stages</code></strong> — where the rate goes, over time.</li>
+  </ul>
+
+  <p>And the metric that tells me my test was lying: <strong><code>dropped_iterations</code></strong>. These are iterations that never began because no VU was available. <strong>If it's non-zero, the offered rate exceeded the delivered rate — my test isn't testing what it says it is.</strong> The fix is to raise <code>maxVUs</code>.</p>
+
+  <h2>Thresholds</h2>
+
+  <p>A <strong>threshold</strong> is a pass/fail rule for the whole run. k6 gives you two ways to assert something, and it's worth knowing the difference:</p>
+
+  <ul>
+    <li><strong><code>check()</code></strong> — validates a single response during the run. It records whether the response passed and shows up in the summary as a pass rate, but <strong>it does not fail the run.</strong> A run where every check failed still exits successfully.</li>
+    <li><strong>A threshold</strong> — a rule applied to an aggregate metric across the whole run. If the rule is broken, <strong>the run fails</strong> with exit code <strong>99</strong>.</li>
+  </ul>
+
+  <p>That exit code is the whole point: CI reads it, so a threshold is what turns a performance test into something that can actually <strong>block a deploy</strong>. A <code>check()</code> that logs failures but exits 0 is invisible to a pipeline.</p>
+
+<pre><code>thresholds: {
+  http_req_failed: ['rate&lt;0.01'],              // under 1% errors
+  http_req_duration: ['p(95)&lt;300', 'p(99)&lt;800'],
+  checks: ['rate&gt;0.99'],                       // 99% of checks passed
+}</code></pre>
+
+  <p>Note that last line — you can even put a threshold on the <code>checks</code> rate, which is how you get <code>check()</code> failures to fail the run after all.</p>
+
+  <p>Aggregations depend on the metric type:</p>
+
+  <div class="tableimg"><img src="img/table-4.png" alt="Aggregations by metric type: Counter, Gauge, Rate, Trend"></div>
+
+  <p><code>p(N)</code> is a percentile, 0–100, <strong>in milliseconds</strong>.</p>
+
+  <h2>The Metrics k6 Gives You Free</h2>
+
+  <div class="tableimg"><img src="img/table-5.png" alt="The metrics k6 gives you free: http_reqs, http_req_duration, http_req_failed, and the request phase breakdown"></div>
+
+  <p>Two things I always point out:</p>
+
+  <ul>
+    <li><strong><code>http_req_failed</code> is a RATE (0–1), not a count.</strong> <code>rate&lt;0.01</code> means "under 1%", not "under one request".</li>
+    <li><strong><code>http_req_duration</code> EXCLUDES <code>blocked</code> and <code>connecting</code>.</strong> So a slow network or a saturated test rig hides in a metric I didn't look at. <strong>Always read the phases, not just the duration.</strong></li>
+  </ul>
+
+  <p>Reading the phases tells me which class of layer is at fault:</p>
+
+  <div class="tableimg"><img src="img/table-6.png" alt="Dominant phase: waiting blames the server, connecting blames the network, blocked blames the test rig"></div>
+
+  <h2>Custom Metrics</h2>
+
+<pre><code>import { Counter } from 'k6/metrics';
+const status200 = new Counter('responses_200');
+
+export default function () {
+  if (res.status === 200) status200.add(1);
+}</code></pre>
+
+  <p>Three kinds: <code>Counter</code> (only goes up), <code>Gauge</code> (up and down), <code>Trend</code> (a distribution — you can threshold its <code>p(95)</code>).</p>
+
+  <p>I split outcomes by class, so a run distinguishes "clean 200s" from "mostly 429s" from "mostly 5xx". Collapsing them into "not 200" hides which happened — and those call for opposite responses.</p>
+
+  <h2>Meet the Demo</h2>
+
+  <p>To make all of this concrete, I built a small <strong>order service</strong> with a <strong>checkout</strong> endpoint.</p>
+
+  <p>It's deliberately built to have three properties:</p>
+
+  <ul>
+    <li><strong>A precondition</strong> (login → cart), so a test can't measure it without setting up state first.</li>
+    <li><strong>A variable cost</strong> (cart size), so the mix matters.</li>
+    <li><strong>A computable bottleneck</strong> (an internal worker pool), so I can <em>predict</em> the knee before I run anything.</li>
+  </ul>
+
+  <p>The numbers are demo-scale on purpose. <strong>The methodology is what scales, not the rate.</strong></p>
+
+  <figure>
+    <img src="img/s1.png" alt="The demo stack running in Docker">
+    <p class="cap"><em>What to look at: two services up — the app and its datastore. Everything below runs against this stack.</em></p>
+  </figure>
+
+  <figure>
+    <img src="img/s2.png" alt="The app's endpoint table / README">
+    <p class="cap"><em>What to look at: which endpoints need a session token. Every one except health and products does — which is why a test that skips login gets a 401, not a number.</em></p>
+  </figure>
+
+  <p>The bottleneck is the app's own <strong>worker pool</strong>. Let me explain what that means, because it's the key to the whole demo. When a checkout arrives, the app hands it to a <strong>worker</strong> — a fixed number of workers process checkouts, and each one handles a single checkout at a time. Think of them as <strong>cashiers at a checkout lane</strong>: there are only so many, and each serves one customer before taking the next.</p>
+
+  <p>My demo's pool has <strong>5 workers</strong>, and each checkout occupies a worker for roughly <strong>100ms</strong> — that's the app's own processing time, not a call to anyone else. If all 5 workers are busy, the next request waits in line.</p>
+
+  <p>That gives me a computable ceiling. Each worker can serve 1 ÷ 0.1 = 10 checkouts per second, and there are 5 workers, so the app can handle <strong>5 × 10 = 50 req/s</strong>. Above 50 req/s, requests start queuing. Below it, they don't. That's the predicted knee — and I'll test exactly this later.</p>
+
+  <p>Because the limit is the app's own concurrency, it stays in scope: I'm measuring <em>my</em> service, and the external payment provider is still mocked (I'll say so in the caveats).</p>
+
+  <p>And because every endpoint except health and products needs a valid session token — and checkout needs a cart owned by that session — a test that skips the setup gets a <strong>401/403</strong>, not a number. <strong>The test cannot accidentally work without its prerequisites.</strong> That's the whole point: the setup phase is not optional.</p>
+
+  <h3>Step 1 — Smoke Test</h3>
+
+  <p>One user, thirty seconds. "Does it work at all?"</p>
+
+  <p>I always do this first. If the smoke test fails, nothing after it is worth running.</p>
+
+  <p>The whole script is almost nothing — one VU, a couple of GETs, loose thresholds:</p>
+
+<pre><code>// 01-smoke.js
+export const options = {
+  vus: 1,
+  duration: '30s',
+  thresholds: {
+    http_req_failed: ['rate==0'],        // zero errors, no exceptions
+    http_req_duration: ['p(95)&lt;1000'],   // loose on purpose -- just prove it works
+  },
+};
+
+export default function () {
+  const health = http.get(`${BASE_URL}/health`);
+  check(health, { 'health is 200': (r) =&gt; r.status === 200 });
+
+  const products = http.get(`${BASE_URL}/products`);
+  check(products, { 'products is 200': (r) =&gt; r.status === 200 });
+
+  sleep(1);
+}</code></pre>
+
+  <p>Note <code>constant-vus</code> (the default when you just set <code>vus</code>) — a closed model is fine here. I'm not looking for a breaking point, only "does it work at all."</p>
+
+  <figure>
+    <img src="img/s3.png" alt="k6 smoke test output — all green">
+    <p class="cap"><em>What to look at: <code>checks</code> at 100% and <code>http_req_failed</code> at 0%. That's the only question this run asks — does the endpoint answer at all? Latency is deliberately loose here.</em></p>
+  </figure>
+
+  <h3>Step 2 — Baseline</h3>
+
+  <p>Checkout needs a session and a cart before it will answer. That state has to exist <strong>before</strong> the load starts — I can't create it per request, or I'd be measuring the setup, not the checkout. So the demo has a <strong>seed script</strong> that creates users and carts directly, and k6's <code>setup()</code> function loads them <strong>once</strong>, before the first request. Only then does the measured loop begin.</p>
+
+  <p>So this step shows three things:</p>
+
+  <ul>
+    <li>the seed script creating users and carts <strong>directly</strong>,</li>
+    <li><code>setup()</code> fetching them <strong>once</strong>,</li>
+    <li>the measured loop hitting <strong>only</strong> checkout.</li>
+  </ul>
+
+  <p><strong>First, the seed — bulk, not one API call per user.</strong> The seed script asks the app to create everything in one request and writes the result to a file:</p>
+
+<pre><code># app/seed.py
+result = post(
+    "/admin/seed",
+    {"users": 200, "cartsPerSize": 100, "sizes": [1, 5, 10, 20, 100]},
+)
+with open("/data/seed.json", "w") as fh:
+    json.dump(result, fh)</code></pre>
+
+  <p>That's 200 users and <strong>100,000 carts in about a quarter of a second</strong>. <strong>Creating a million users through the API would take days and pollute the measurement</strong> — so I seed directly. That's the point of this step.</p>
+
+  <p><strong>Then k6 loads that file once, in <code>setup()</code>.</strong> <code>setup()</code> runs a single time before any load, so the pool is built once, not per request:</p>
+
+<pre><code>// lib.js
+export function loadCarts() {
+  http.post(`${BASE_URL}/admin/reset`);        // start from a clean pool
+  const bySize = {};
+  for (const user of raw) {
+    for (const [size, ids] of Object.entries(user.carts)) {
+      for (const cartId of ids) bySize[size].push({ token: user.token, cartId });
+    }
+  }
+  return { bySize };
+}</code></pre>
+
+<pre><code>// 02-baseline.js
+export function setup() {
+  return loadCarts();   // runs ONCE, before the first request
+}</code></pre>
+
+  <p><strong>Finally, the measured loop — and it touches only checkout:</strong></p>
+
+<pre><code>export default function (data) {
+  const size = pickWeighted(REALISTIC);        // realistic cart mix
+  const cart = takeCart(data, size);           // a fresh, unconsumed cart
+
+  const res = http.post(
+    `${BASE_URL}/checkout`,
+    JSON.stringify({ cartId: cart.cartId }),
+    { headers: { Authorization: `Bearer ${cart.token}` } }
+  );
+
+  check(res, { 'checkout ok': (r) =&gt; r.status === 200 });
+}</code></pre>
+
+  <p>That split — <strong>setup once, then measure only the thing you care about</strong> — is the whole discipline. If I created the cart inside the loop, I'd be measuring the setup.</p>
+
+  <p>And the load shape is an open model at a steady 20 req/s:</p>
+
+<pre><code>scenarios: {
+  baseline: {
+    executor: 'constant-arrival-rate',
+    rate: 20, timeUnit: '1s', duration: '60s',
+    preAllocatedVUs: 30, maxVUs: 200,
+  },
+},</code></pre>
+
+  <p>I set the <strong>rate</strong>, not the users — k6 supplies whatever VUs it needs to hold that rate. That's the open model from earlier, in practice.</p>
+
+  <p>I record the baseline p95 <strong>and the mix it was measured at</strong> — because a number without its mix isn't a result.</p>
+
+  <p><strong>The baseline passed:</strong> throughput held at 19.8 req/s, p95 <strong>151.1ms</strong> (target 300ms), error rate 0%, and <code>dropped_iterations</code> at zero.</p>
+
+  <figure>
+    <img src="img/s4.png" alt="The seed script running">
+    <p class="cap"><em>What to look at: 200 users and 100,000 carts created in one call — the pool the load will draw from.</em></p>
+  </figure>
+
+  <figure>
+    <img src="img/s5.png" alt="k6 baseline output — p95 highlighted">
+    <p class="cap"><em>What to look at: <code>http_req_duration</code> p95 against the 300ms target, plus <code>dropped_iterations</code> at zero — nothing was refused.</em></p>
+  </figure>
+
+  <h3>Step 3 — Stress Test: Find the Knee</h3>
+
+  <p><strong>I predict the knee before I run.</strong> From the worker pool's arithmetic above, I expect the limit at <strong>50 req/s</strong> — so that's the number I write down <em>before</em> starting the test.</p>
+
+  <p>Then I ramp past it — 5 → 80 req/s — and show the result matching the prediction.</p>
+
+  <p>The executor is <code>ramping-arrival-rate</code>: an open model where I raise the <strong>offered rate</strong> on a schedule and let the queue build.</p>
+
+<pre><code>// 03-stress.js
+// PREDICTION: 5 workers / 0.1s service time = 50 req/s.
+// Expect p95 to climb as the offered rate passes ~50/s.
+scenarios: {
+  stress: {
+    executor: 'ramping-arrival-rate',
+    startRate: 5,
+    timeUnit: '1s',
+    preAllocatedVUs: 50,
+    maxVUs: 600,          // past the knee, waiting requests need VUs
+    gracefulStop: '15s',  // bound the drain so the summary always prints
+    stages: [
+      { duration: '20s', target: 20 },   // warm up, below the knee
+      { duration: '30s', target: 50 },   // approach the predicted knee
+      { duration: '30s', target: 80 },   // push past it
+      { duration: '10s', target: 0 },    // ramp down
+    ],
+  },
+},</code></pre>
+
+  <p>Two details that matter. The cart size is held <strong>fixed at 10 items</strong> (~100ms) so the <em>only</em> variable is the rate. And the thresholds are the finding, not a safety net — I <em>want</em> this one to go red:</p>
+
+<pre><code>thresholds: {
+  http_req_duration: ['p(95)&lt;300'],   // this SHOULD fail past the knee
+  http_req_failed: ['rate&lt;0.05'],     // guard: catch a broken run
+  checks: ['rate&gt;0.95'],              // guard: catch a broken run
+},</code></pre>
+
+  <p>That's far more convincing than "the system got slow." If the knee appears where I predicted, I understand the system. If it appears somewhere else, my assumption was wrong — and that's a finding, not a failure.</p>
+
+  <p><strong>And it matched.</strong> The ramp kept asking for more — up to 80 req/s — but the <em>delivered</em> throughput stopped at around <strong>50 req/s</strong>, almost exactly the number I predicted, while p95 climbed from a flat <strong>102ms into the seconds</strong>:</p>
+
+  <div class="tableimg"><img src="img/table-7.png" alt="Offered vs delivered throughput and p95 latency across the ramp, with the knee marked"></div>
+
+  <p>Look at what happens past the knee. The ramp asked for 57, then 67 — and the app didn't just stop at 50, it <strong>delivered <em>less</em></strong>: 49.5, then 44.5. The queue got so backed up that requests took so long to finish that fewer completed at all. That's the overload collapse: <strong>offered rate up, delivered rate down.</strong></p>
+
+  <p>And <code>dropped_iterations</code> went non-zero past the knee, which is exactly the signal I described earlier — the test was offering more than the app could take.</p>
+
+  <p>(One honesty note: those past-the-knee numbers move between runs. Across the runs I did, the delivered rate once past the knee sat somewhere in the <strong>44–50</strong> range, and the exact digits shift every time. The <em>shape</em> is stable — flat, then the bend, then the fall — even when the numbers move. That's why I report the shape and the prediction, not a single heroic number.)</p>
+
+  <figure>
+    <img src="img/s6.png" alt="The ramp — active VUs climbing past the knee">
+    <p class="cap"><em>What to look at: the VUs column. It sits at 1–5 while the app keeps up, then explodes — 16, then 87, then 175 — as requests start queuing. The <code>iters/s</code> column on the right is the <strong>offered</strong> rate, still climbing to ~77 while the app delivers only ~50. That widening gap is the knee.</em></p>
+  </figure>
+
+  <figure>
+    <img src="img/s7.png" alt="Latency vs load — the curve bending">
+    <p class="cap"><em>What to look at: the flat stretch, then the bend. Latency holds near 100ms below the knee and shoots into the seconds above it — the same story the VU column told, drawn as a curve.</em></p>
+  </figure>
+
+  <h3>Step 4 — The Cart-Size Mix</h3>
+
+  <p>Now the payoff. I re-run the same endpoint with three mixes — <strong>all small</strong>, <strong>realistic</strong>, and <strong>all heavy</strong> — holding the rate <em>constant across the three</em> and the threshold the same, then put the results side by side.</p>
+
+  <p>One deliberate choice: I keep the rate <strong>low enough that every mix is sustainable</strong>. If I pushed the rate up, the heavy mix would stop measuring service time and start measuring queueing — and then I'd be testing the load, not the mix. The mix has to be the <em>only</em> variable.</p>
+
+  <p>The three mixes are just weight tables, and one env var picks which one runs:</p>
+
+<pre><code>// 04-mix.js
+const MIX  = __ENV.MIX  || 'realistic';
+const RATE = Number(__ENV.MIX_RATE || 5);   // LOW, so every mix is sustainable
+
+const MIXES = {
+  'all-small': [{ items: 1,   weight: 100 }],
+  'realistic': [{ items: 1,   weight: 60 },   // 60% tiny
+                { items: 5,   weight: 30 },   // 30% small
+                { items: 20,  weight: 9  },   //  9% medium
+                { items: 100, weight: 1  }],  //  1% huge  &lt;- the tail
+  'all-heavy': [{ items: 100, weight: 100 }],
+};
+
+const choices = MIXES[MIX];</code></pre>
+
+  <p>Then I run it three times, changing only <code>MIX</code>:</p>
+
+<pre><code>MIX=all-small k6 run 04-mix.js
+MIX=realistic k6 run 04-mix.js
+MIX=all-heavy  k6 run 04-mix.js</code></pre>
+
+  <p>The threshold is <strong>identical for all three</strong> — that's the whole lesson:</p>
+
+<pre><code>thresholds: {
+  http_req_failed: ['rate&lt;0.01'],
+  http_req_duration: ['p(95)&lt;300', 'p(99)&lt;800'],   // SAME threshold, every mix
+},</code></pre>
+
+  <p>Same endpoint, same rate, same threshold. Only the mix moves.</p>
+
+  <div class="tableimg"><img src="img/table-8.png" alt="The three-mix comparison: p50, p95, p99 and whether each passes p95 < 300ms"></div>
+
+  <p><strong>Measured: p50 stays flat (56ms) while p99 moves roughly ten times (56.9ms → 551.1ms).</strong> The small fraction of heavy carts defines the tail.</p>
+
+  <p>Look at the realistic row: the <em>same endpoint</em>, at the <em>same rate</em>, passes the p95 requirement <strong>and breaches p99</strong> — because 1% of carts are huge and p99 looks at exactly the top 1%.</p>
+
+  <p>This is the most valuable lesson in the whole article, made concrete: <strong>the same endpoint passes or fails the same requirement depending on the mix.</strong> So a bare "p95 &lt; 300ms ✅" is meaningless without saying what mix produced it.</p>
+
+  <p>And here's the instability I found. Same realistic mix, same code, three runs — only the random seed changed:</p>
+
+  <div class="tableimg"><img src="img/table-9.png" alt="Three runs of the same realistic mix, showing p99 flipping between ~154ms and ~551ms"></div>
+
+  <p>p99 <strong>flipped between runs</strong>, because ~1% of requests are heavy and p99 sits right on that boundary — the 99th percentile either lands on a heavy request or it doesn't. <strong>So I report several percentiles, and I say when a number is marginal.</strong></p>
+
+  <figure>
+    <img src="img/s8a.png" alt="The three-mix comparison — all-small">
+    <p class="cap"><em>Mix 1 of 3 — <strong>all-small</strong> (every cart 1 item). p50/p95/p99 all sit at ≈56ms. No heavy carts, so no tail; passes the threshold with room to spare.</em></p>
+  </figure>
+
+  <figure>
+    <img src="img/s8b.png" alt="The three-mix comparison — realistic">
+    <p class="cap"><em>Mix 2 of 3 — <strong>realistic</strong> (60/30/9/1%). p50 stays flat at ≈56ms, but p99 jumps to ≈551ms. p95 passes the 300ms bar, p99 breaches it — the 1% of heavy carts lands exactly where p99 looks.</em></p>
+  </figure>
+
+  <figure>
+    <img src="img/s8c.png" alt="The three-mix comparison — all-heavy">
+    <p class="cap"><em>Mix 3 of 3 — <strong>all-heavy</strong> (every cart 100 items). Now even p50 is ≈551ms — the whole distribution shifts and it fails outright.</em></p>
+  </figure>
+
+  <p class="cap"><em>Read the three together: same endpoint, same rate, same threshold — only the mix changes, and the verdict flips from pass to marginal to fail.</em></p>
+
+  <h3>Step 5 — Spike Test</h3>
+
+  <p>Traffic jumps 10× instantly. Does it survive — and does it <em>recover</em> when the spike passes?</p>
+
+  <p>Recovery is the part people forget. A system that survives the spike but never comes back down is still down.</p>
+
+  <p>The stages <em>are</em> the test — a sharp jump up, a hold, then a drop back to prove recovery:</p>
+
+<pre><code>// 05-spike.js -- cart size held at 1 item (~55ms) so the spike is about RATE
+scenarios: {
+  spike: {
+    executor: 'ramping-arrival-rate',
+    startRate: 10,
+    timeUnit: '1s',
+    preAllocatedVUs: 50,
+    maxVUs: 2000,
+    stages: [
+      { duration: '15s', target: 10  },   // normal load
+      { duration: '5s',  target: 100 },   // the spike: jump 10x, fast
+      { duration: '20s', target: 100 },   // hold the spike
+      { duration: '5s',  target: 10  },   // drop back down
+      { duration: '15s', target: 10  },   // does it recover?
+    ],
+  },
+},</code></pre>
+
+  <p>Two things to notice. The <strong><code>target: 10</code> after the spike</strong> is the recovery check — I hold at normal load for 15s and watch whether latency comes back down. And I only threshold the error rate here:</p>
+
+<pre><code>thresholds: {
+  http_req_failed: ['rate&lt;0.05'],   // did it survive? errors are the pass/fail
+},</code></pre>
+
+  <p>I <em>don't</em> threshold latency — a spike is <em>supposed</em> to be slow, so a latency threshold would fail by design and tell me nothing. Survival plus recovery is the whole question.</p>
+
+  <p><strong>It did both.</strong> The spike held at ~90 req/s with 0% errors and p95 at 1.56s — then dropped straight back to the pre-spike rate:</p>
+
+<pre><code>10 req/s → 90 req/s (spike) → 10 req/s (recovered)</code></pre>
+
+  <p>(It plateaus at ~90, not 100, because 1-item carts take ~55ms — and 5 ÷ 0.055 ≈ 90. The same arithmetic again.)</p>
+
+  <figure>
+    <img src="img/s9.png" alt="Spike test output and recovery">
+    <p class="cap"><em>What to look at: two things — <code>http_req_failed</code> staying at 0% (it survived the surge), and the rate falling back to the pre-spike level at the end (it recovered). A spike you survive but never come down from is still down.</em></p>
+  </figure>
+
+  <h2>Reading the Results — The Traps I Check</h2>
+
+  <p>Every one of these comes from experience:</p>
+
+  <ul>
+    <li><strong>Vacuous thresholds.</strong> A threshold that can't fail proves nothing. If the p95 target is 300ms and reality is 3ms, the ✓ is noise.</li>
+    <li><strong>The test rig as the bottleneck.</strong> Check <code>blocked</code> and <code>connecting</code> — my own client may be the limit, not the server.</li>
+    <li><strong>Test environment ≠ production.</strong> The number doesn't transfer.</li>
+    <li><strong>Measuring the wrong component.</strong> If a rate limiter fires, I measured the limiter, not the app.</li>
+    <li><strong><code>dropped_iterations</code> non-zero.</strong> The ramp wasn't delivered; the test is lying about its own load.</li>
+    <li><strong>A short test can't see a rare tail.</strong> If 1% of traffic is heavy, I need thousands of samples for p99 to even be defined.</li>
+    <li><strong>A green latency number on a failed run.</strong> The one that bit me hardest, and it's worth a paragraph.</li>
+  </ul>
+
+  <h3>The trap that bit me: a passing latency on a failing test</h3>
+
+  <p>Because checkout <strong>consumes</strong> the cart, every iteration needs a fresh one. On one of my runs the seeded carts ran out — so checkout started returning <strong>409 (already consumed)</strong>. Here's what the summary said:</p>
+
+<pre><code>✗ http_req_duration..............: p(95)=100.97ms        ← PASSES
+  http_req_failed................: 93.34% (3407/3650)    ← 93% FAILED</code></pre>
+
+  <p><strong>The latency threshold passed while 93% of my requests failed.</strong> The 409s come back fast, so they drag the latency <em>down</em> — the test looked healthy at exactly the moment it was measuring nothing but errors.</p>
+
+  <p>The reason it slipped through: my stress script only thresholded <code>http_req_duration</code>. A run can fail a million requests and still print a green duration.</p>
+
+  <p><strong>The fix is three things:</strong></p>
+
+  <ul>
+    <li><strong>Reset the state before the run.</strong> The setup phase now clears the cart pool, so every run starts clean.</li>
+    <li><strong>Fail loudly when the data runs out</strong> — don't wrap around and silently re-serve used carts.</li>
+    <li><strong>Threshold the error rate, not just the latency</strong> — <code>http_req_failed: ['rate&lt;0.05']</code> and <code>checks: ['rate&gt;0.95']</code>.</li>
+  </ul>
+
+  <p><strong>The lesson: a latency number is only meaningful when the error rate is near zero.</strong> Before I trust a duration, I read <code>http_req_failed</code> and <code>checks</code> first. A green p95 on a 93%-failed run is worse than no number at all — it's a false pass.</p>
+
+  <figure>
+    <img src="img/s11.png" alt="Terminal showing dropped_iterations">
+    <p class="cap"><em>What to look at: the summary block. <code>checks</code> at 100% and <code>http_req_failed</code> at 0% say the run was valid; <code>✗ http_req_duration</code> p(95)=3.64s is the knee going red on purpose; and <code>dropped_iterations: 362</code> is the proof — the ramp offered more than the app could accept. Read the first two lines before you trust the third.</em></p>
+  </figure>
+
+  <h2>Pro-Tips for Your First Load Test</h2>
+
+  <p>A few things I wish someone had told me earlier:</p>
+
+  <ul>
+    <li><strong>Write the requirement down before you touch a tool.</strong> A test without a target is a demo, not a test.</li>
+    <li><strong>Do the smoke test first, always.</strong> One user for thirty seconds saves hours of chasing a broken script.</li>
+    <li><strong>Read the phases, not just the duration.</strong> <code>waiting</code> blames the server; <code>blocked</code> blames your rig.</li>
+    <li><strong>Predict the knee, then confirm it.</strong> When the number matches your arithmetic, you understand the system — not just the result.</li>
+    <li><strong>Report the caveats with the numbers.</strong> The conditions <em>are</em> part of the result.</li>
+  </ul>
+
+  <h2>Best Practices</h2>
+
+  <ul>
+    <li><strong>Model the mix, not just the endpoint.</strong> Real traffic is a distribution; so is your test.</li>
+    <li><strong>Use an open model to find a break.</strong> A closed model cools down when things get hot.</li>
+    <li><strong>Seed your data directly.</strong> Creating a million users through the API is slow and pollutes the measurement.</li>
+    <li><strong>Isolate state per VU.</strong> Shared carts produce phantom errors that don't exist in production.</li>
+    <li><strong>Mock external dependencies — and say so.</strong> The real payment latency is not in your number.</li>
+    <li><strong>Let thresholds fail.</strong> A green ✓ you can't trust is worse than a red one you can.</li>
+  </ul>
+
+  <h2>Conclusion</h2>
+
+  <p>Performance testing is a <strong>lifecycle</strong>, not a script. Get the vocabulary right, get the number first, seed the data, run it in the right model, and read the phases — not just the average. The tool is interchangeable; the concepts are not.</p>
+
+  <p>I hope this gives you a foundation you can carry into any tool you pick up next.</p>
+
+  <h2>Further Reading and Resources</h2>
+
+  <ul>
+    <li>Official k6 Documentation</li>
+    <li>Grafana k6: Test Types and Executors</li>
+    <li>Little's Law (Wikipedia) — the arithmetic behind capacity planning</li>
+  </ul>
+
+  <h2>Closing Note</h2>
+
+  <p>Thank you for learning with me. If you found this useful, feel free to share your experiences or ask questions in the comments below — I'm always happy to talk performance testing.</p>
+
+  <p>Happy testing!</p>
+
+  <p>Email: dhadiprasetyo@gmail.com<br>
+  LinkedIn: Darmawan Hadiprasetyo</p>
+
+</main>
+</body>
+</html>
