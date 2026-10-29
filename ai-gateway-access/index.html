@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en" prefix="og: http://ogp.me/ns#">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>When employees leave, their AI tokens stay behind: closing the lag and risk of manual AI gateway access</title>
+
+<meta name="description" content="Why AI access does not end at Single Sign-On, the hidden risks and delays of manual provisioning, and how the litellm-directory-sync service bridges Active Directory and Okta to LiteLLM.">
+<meta name="author" content="Darmawan Hadiprasetyo">
+
+<!-- Open Graph metadata for Medium story importer -->
+<meta property="og:type" content="article">
+<meta property="og:title" content="When employees leave, their AI tokens stay behind: closing the lag and risk of manual AI gateway access">
+<meta property="og:description" content="Why AI access does not end at Single Sign-On, the hidden risks and delays of manual provisioning, and how the litellm-directory-sync service bridges Active Directory and Okta to LiteLLM.">
+<meta property="og:url" content="https://darmawanh.github.io/personal-blogs/ai-gateway-access/">
+<meta property="og:site_name" content="Personal Blogs">
+<meta property="article:author" content="Darmawan Hadiprasetyo">
+<meta property="article:published_time" content="2026-10-29T00:00:00Z">
+<meta property="article:tag" content="Platform Engineering">
+<meta property="article:tag" content="AI Infrastructure">
+<meta property="article:tag" content="Identity">
+<meta property="article:tag" content="Security">
+<meta property="article:tag" content="LiteLLM">
+
+<!-- Canonical link for original attribution -->
+<link rel="canonical" href="https://darmawanh.github.io/personal-blogs/ai-gateway-access/">
+
+<style>
+  :root{ --ink:#242424; --muted:#6b6b6b; --line:#e6e6e6; --code-bg:#f7f7f7; --accent:#1a8917; }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:#fff; color:var(--ink);
+    font-family:Georgia,Cambria,"Times New Roman",serif;
+    font-size:20px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{max-width:740px;margin:0 auto;padding:48px 24px 96px}
+  .kicker{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  h1{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:38px;line-height:1.18;letter-spacing:-.015em;font-weight:800;margin:14px 0 8px}
+  .subtitle{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:18px;line-height:1.45;color:var(--muted);margin:0 0 16px}
+  .byline{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:15px;color:var(--muted);margin:0 0 34px}
+  h2{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:27px;line-height:1.25;font-weight:750;letter-spacing:-.01em;margin:52px 0 14px}
+  h3{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    font-size:21px;line-height:1.3;font-weight:700;margin:40px 0 12px}
+  p{margin:0 0 22px}
+  a{color:inherit}
+  strong{font-weight:700}
+  em{font-style:italic}
+  ul{margin:0 0 22px;padding-left:26px}
+  ol{margin:0 0 22px;padding-left:26px}
+  li{margin:0 0 10px}
+  pre{
+    background:var(--code-bg);border:1px solid var(--line);border-radius:6px;
+    padding:16px 18px;overflow-x:auto;margin:0 0 24px;
+    font-family:"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    font-size:13.5px;line-height:1.55;color:#1f1f1f;
+  }
+  pre code{font-family:inherit;white-space:pre;background:none;padding:0;font-size:inherit}
+  code{font-family:"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:.86em;
+    background:#f2f2f2;padding:2px 5px;border-radius:4px}
+  table{width:100%;border-collapse:collapse;margin:28px 0;font-size:15px;display:block;overflow-x:auto}
+  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left}
+  th{background:var(--code-bg);font-weight:700}
+</style>
+</head>
+<body>
+<main class="page">
+  <article class="h-entry">
+    <div class="kicker">AI Infrastructure &bull; Platform Engineering</div>
+    <h1 class="p-name">When employees leave, their AI tokens stay behind: closing the lag and risk of manual AI gateway access</h1>
+    <p class="subtitle">Why AI access does not end at Single Sign-On, the hidden risks and delays of manual provisioning, and how the litellm-directory-sync service bridges Active Directory and Okta to LiteLLM.</p>
+    <p class="byline">Darmawan Hadiprasetyo &middot; Platform Engineering, AI Infrastructure</p>
+
+    <h2>1. The Friday afternoon incident</h2>
+    <p>At 16:45 on a Friday, human resources closes an offboarding ticket for a departing machine learning engineer. IT disables the engineer's Active Directory account and revokes their Okta profile, cutting access to Slack, email, GitHub, and cloud consoles. From an identity standpoint, offboarding is complete.</p>
+    <p>Across the building, the platform team monitors model inference through the LiteLLM gateway, assuming corporate Single Sign-On protects gateway resources. Three hours later, an evaluation script on the former employee's home server wakes up. It holds a bearer key issued by LiteLLM two months earlier, which the proxy accepts without challenge. Over the weekend, the script repeatedly queries Claude 3.5 Sonnet and runs up $800 a day in API charges.</p>
+    <p>The leak happens because an AI gateway handles inference traffic, not user identity. LiteLLM proxies model providers, balances upstream requests, caches responses, and records token counts. Directory state lives elsewhere. When an employee leaves or changes teams, Single Sign-On blocks their dashboard login, while their existing API keys remain valid at the proxy. Without an automated bridge between the directory and the gateway, those credentials keep running indefinitely.</p>
+
+    <h2>2. The operational risks and synchronization lag of manual access</h2>
+    <p>In many organizations, AI gateway access relies on manual processes. An engineer files a Jira or ServiceNow ticket, a platform admin logs into the LiteLLM dashboard, creates an API key by hand, sets an arbitrary budget limit, and pastes the secret into a private chat.</p>
+    <p>While manual workflows are often a natural starting point, they introduce operational risk and synchronization lag across four key areas:</p>
+    <p><strong>Offboarding lag and zombie credentials:</strong> Human resources notifies IT of employee departures, but AI gateways rarely appear on standard IT offboarding checklists. Even when a ticket reaches the platform team, it often sits in a backlog over the weekend. Meanwhile, unrevoked bearer tokens (<code>sk-...</code>) stored in local terminal configurations, test harnesses, or personal devices continue to authenticate successfully against the gateway.</p>
+    <p><strong>Permission creep during internal transfers:</strong> When an engineer moves from research to customer operations, their account remains active. Because removing access requires someone to remember to file a downgrade ticket, that ticket rarely gets created. Over time, employees accumulate privileges for expensive frontier models and generous budgets that no longer match their job responsibilities.</p>
+    <p><strong>Operational bottleneck and ticket fatigue:</strong> Platform engineers end up acting as manual access brokers. Every new project, intern onboarding, and quota bump requires an administrative touch in the gateway dashboard. This administrative overhead pulls engineers away from building core platform capabilities and creates multi-day delays for developers waiting on credentials.</p>
+    <p><strong>Broken cost attribution and audit blindness:</strong> Under manual provisioning, engineers often share tokens across teams to bypass ticketing delays or use generic shared accounts. When the monthly invoice arrives, finance cannot attribute spending to specific departments or projects. In a security audit, the platform team cannot produce an authoritative record of who held access to specific models on a given date.</p>
+
+    <h2>3. The three things to sync from the directory to the gateway</h2>
+    <p>Closing these gaps requires synchronizing three specific dimensions of identity directly into the gateway:</p>
+    <ol>
+      <li><strong>User lifecycle and credential validity:</strong> The service must provision accounts the moment an employee joins an approved directory group and revoke keys immediately when their account is disabled. Tying accounts to immutable employee IDs rather than email addresses prevents impersonation and orphan accounts. When a departure occurs, the gateway must invalidate matching token caches so that all programmatic access terminates in minutes.</li>
+      <li><strong>Team membership and model access tiers:</strong> Departmental groups in Active Directory or Okta should dictate which upstream models an employee can query. Machine learning researchers may need unconstrained access to high-cost reasoning models such as <code>gpt-4o</code> and <code>claude-3-5-sonnet</code>, while general productivity users should route to lighter, cost-effective models like <code>claude-3-5-haiku</code> and <code>gpt-4o-mini</code>. When an employee changes departments in the directory, their model permissions must adjust automatically.</li>
+      <li><strong>Budgets, spend caps, and token quotas:</strong> Gateway spend limits must reflect organizational boundaries rather than static, one-time assignments. Synchronizing departmental budget policies ensures that users operate within defined monthly spending caps, such as $200 for core engineering and $50 for operations. Dynamically adjusting these caps during role transfers prevents runaway spending before unexpected costs appear on the provider bill.</li>
+    </ol>
+
+    <h2>4. The two clocks: why Single Sign-On and JIT leave programmatic gaps</h2>
+    <p>Identity providers and AI gateways manage access on fundamentally different timelines.</p>
+    <p>Interactive access runs through the identity provider using SAML assertions, OIDC tokens, browser sessions, and multi-factor prompts. These sessions expire every 8 to 12 hours, and an administrator can revoke them with a single click.</p>
+    <p>Programmatic access runs through the gateway. Developers generate long-lived bearer tokens (<code>sk-...</code>) for terminal workflows, automated test suites, batch pipelines, and code editor extensions. These API keys often lack expiration dates and bypass the identity provider entirely, sending requests straight to the gateway reverse proxy.</p>
+    <p>Organizations often expect Just-In-Time (JIT) provisioning through Single Sign-On to handle access governance. JIT provisioning works well when a user opens the LiteLLM dashboard in a browser, reading incoming SAML attributes to create the user account on demand. But JIT handles only interactive logins. Departing employees never log in through the dashboard again, so JIT hooks never fire. As a result, existing API keys stay active, team budget allocations remain open, and old group permissions persist until someone intervenes by hand.</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Lifecycle phase</th>
+          <th>HR system event</th>
+          <th>Directory state (AD / Okta)</th>
+          <th>Gateway state (without sync)</th>
+          <th>Gateway state (with directory sync)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Join</td>
+          <td>Employee hired into ML Engineering</td>
+          <td>User created, added to <code>AI-Platform-Users</code></td>
+          <td>User missing; cannot generate keys until first SSO dashboard visit</td>
+          <td>User pre-provisioned, team assigned, $250 monthly budget granted</td>
+        </tr>
+        <tr>
+          <td>Move</td>
+          <td>Transfer from ML to Customer Support</td>
+          <td>Group changed from <code>ML-Tier1</code> to <code>Support-Basic</code></td>
+          <td>Old keys retain access to expensive models (Claude 3.5 Sonnet, GPT-4o)</td>
+          <td>Keys revoked, models restricted to Haiku and Mini, budget lowered to $50</td>
+        </tr>
+        <tr>
+          <td>Leave</td>
+          <td>Immediate resignation or termination</td>
+          <td>Account disabled, sessions killed</td>
+          <td>Keys (<code>sk-...</code>) remain active indefinitely, unmonitored spend continues</td>
+          <td>Keys blocked immediately (&lt;15 min SLA), user deleted after grace period</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>5. Architecture of an identity-to-gateway bridge</h2>
+    <p>Closing the gap requires a background synchronization service that connects enterprise directories directly to LiteLLM.</p>
+
+    <pre><code>[HR System] -&gt; [Active Directory / Okta]
+                      │ (Read-Only LDAPS / System Log)
+                      ▼
+          [Directory Sync Service]
+          ├── Change Ingestion (USN / Event Hooks)
+          ├── Mapping Engine (Group -&gt; Team/Budget/Models)
+          └── Transactional Outbox (Durable SQLite/PG)
+                      │ (HTTP API / Outbox Worker)
+                      ▼
+           [LiteLLM AI Gateway] -&gt; Upstream LLMs (OpenAI, Anthropic, Bedrock)</code></pre>
+
+    <p>The bridge relies on three design patterns.</p>
+
+    <h3>Read-and-write asymmetry</h3>
+    <p>The synchronization service maintains strict privilege separation between identity providers and the gateway. It acts as a read-only client for Active Directory, connecting over LDAPS on port 636 with an unprivileged service account. For Okta, it requests only read scopes: <code>okta.users.read</code>, <code>okta.groups.read</code>, and <code>okta.logs.read</code>. The service holds no write permissions in either directory and cannot modify users, group memberships, or passwords.</p>
+    <p>All write operations target the LiteLLM gateway management API using a gateway master key. This separation restricts operational blast radius: a bug in the synchronization code cannot alter corporate directory records.</p>
+
+    <h3>Event capture without dual writes</h3>
+    <p>The service detects directory updates without requiring manual intervention from identity teams.</p>
+    <p>In Active Directory, it polls using the <code>uSNChanged</code> attribute. Update Sequence Numbers track object revisions sequentially on each domain controller. This avoids DirSync controls, which require directory replication rights (<code>DS-Replication-Read</code>) that service accounts should never hold.</p>
+    <p>In Okta, the service pairs real-time Event Hooks with continuous polling. An HTTP listener accepts incoming webhooks for prompt updates, while a background worker polls the Okta System Log API using a high-water-mark cursor. If a network blip or firewall rule drops a webhook, the log poller catches the change on its next pass.</p>
+
+    <h3>Transactional outbox</h3>
+    <p>Making synchronous API calls directly from an ingestion worker to LiteLLM creates availability problems whenever the gateway restarts or hits rate limits.</p>
+    <p>Instead, the service stores changes in a PostgreSQL outbox table. When the ingestion engine detects an update, it normalizes the payload into a domain event, then writes both the updated state and the outbox event in a single database transaction. Both write together or roll back together.</p>
+    <p>A separate worker process reads pending records from the outbox table using <code>FOR UPDATE SKIP LOCKED</code>. It sends the updates to LiteLLM with exponential backoff, holding events in the queue for retry if the gateway returns HTTP 429 or 500.</p>
+
+    <h2>6. Automating join, move, and leave</h2>
+    <p>Lifecycle management centers on three state transitions: onboarding, internal transfers, and offboarding.</p>
+
+    <h3>Join: automated pre-provisioning</h3>
+    <p>When human resources adds a new hire to directory groups such as <code>AI-Platform-Users</code> or <code>Engineering-Core</code>, the sync service configures their gateway account before their start date.</p>
+    <p>The service calls LiteLLM's <code>/user/new</code> endpoint, assigns the employee ID as the stable user identifier, links the user to their team, and sets the assigned budget policy. A new core engineer might receive a $200 rolling monthly budget with access restricted to <code>gpt-4o</code>, <code>claude-3-5-sonnet</code>, and <code>text-embedding-3-small</code>. The engineer can generate API keys through developer tooling on their first day without waiting for help desk tickets.</p>
+
+    <h3>Move: team transitions and privilege downgrades</h3>
+    <p>Unmanaged gateways accumulate stale permissions when employees change roles. If a machine learning researcher transfers to product operations, their account remains active, but their permissions must adjust.</p>
+    <p>The engine evaluates precedence across mapped groups to calculate the difference between directory memberships and existing gateway entitlements. It removes the user from the research team via <code>/team/member_delete</code>, assigns them to the operations team with <code>/user/update</code>, and switches the allowed model list from high-cost models to utility models like <code>claude-3-5-haiku</code> and <code>gpt-4o-mini</code>. The service lowers the monthly spend limit from $1,000 to $50 while preserving past usage history.</p>
+
+    <h3>Leave: immediate revocation mechanics</h3>
+    <p>When an employee departs, the service blocks keys immediately while deferring account deletion. Deleting a user immediately through <code>/user/delete</code> removes past cost attribution records, and proxy instances can continue serving requests if bearer tokens remain cached in Redis.</p>
+    <p>To shut off access safely, the worker runs a multi-step sequence:</p>
+    <ol>
+      <li>Remove the user from all teams with <code>/team/member_delete</code>.</li>
+      <li>Call <code>/key/block</code> on every active key belonging to the user.</li>
+      <li>Invalidate matching Redis token caches so that subsequent requests return HTTP 401 Unauthorized immediately.</li>
+      <li>Record an audit log entry with the revocation timestamp, actor, and target.</li>
+      <li>Schedule the account for deletion after a grace period, such as seven days, preserving billing history while blocking network traffic.</li>
+    </ol>
+
+    <pre><code class="language-python">def reconcile_members(
+    directory_members: set[str],
+    gateway_members: set[str],
+) -> tuple[set[str], set[str]]:
+    """Compute member additions and removals using set difference.
+
+    Args:
+        directory_members: User IDs active in directory groups.
+        gateway_members: User IDs active on the AI gateway.
+
+    Returns:
+        A tuple of (members_to_add, members_to_remove).
+    """
+    members_to_add = directory_members - gateway_members
+    members_to_remove = gateway_members - directory_members
+    return members_to_add, members_to_remove</code></pre>
+
+    <p>Set difference determines which accounts need to be created or removed on each pass, adjusting gateway membership until it matches directory truth.</p>
+
+    <h2>7. Why event-driven sync still needs periodic reconciliation</h2>
+    <p>Webhooks provide fast updates, but they do not guarantee consistency on their own. Networks drop packets, receiving servers restart during deployments, and rotated webhook secrets temporarily break HMAC signature checks. An event triggers a check, but current state still lives in the directory.</p>
+    <p>The service runs a reconciliation sweep on a fixed schedule, such as every 60 minutes. The worker compares the full list of directory group members against active LiteLLM user accounts. Any discrepancy, whether an unrevoked key, a missing account, or an outdated team assignment, generates a corrective event in the transactional outbox.</p>
+
+    <h3>Safety circuits: the two-miss rule and blast-radius limits</h3>
+    <p>Automating reconciliation introduces the risk of accidental mass revocation. If an Active Directory query times out during a full sweep and returns zero records, a basic reconciliation loop would conclude that every employee was terminated and disable every active API key.</p>
+    <p>The engine uses two safeguards to prevent false purges.</p>
+    <p>The first safeguard is a two-miss rule. When an account exists in the gateway but disappears from directory search results, the service increments a miss counter in a tracking table. It flags the account as suspect rather than revoking access right away. The worker only issues revocation commands if the account remains missing across two consecutive reconciliation runs.</p>
+    <p>The second safeguard is a blast-radius cap. If a single reconciliation pass attempts to modify more than 10 percent of active accounts, the circuit breaker halts execution. The service logs an error, fires an alert, writes a dry-run report, and waits for administrator review before applying any changes.</p>
+
+    <h2>8. Solving the gap: building litellm-directory-sync with Claude</h2>
+    <p>To solve this lifecycle gap in production, I developed <code>litellm-directory-sync</code>, pairing with Claude as an architectural partner to design, build, and test an enterprise identity lifecycle service for LiteLLM.</p>
+    <p>Public repository: <a href="https://github.com/darmawanh/litellm-directory-sync">https://github.com/darmawanh/litellm-directory-sync</a></p>
+    <p>The project turns directory events into durable gateway actions through a clean, decoupled architecture.</p>
+
+    <h3>Key features</h3>
+    <p><strong>Read-only directory connectors:</strong> Connects to Active Directory over LDAPS on port 636 using sequence number polling (<code>uSNChanged</code>), and to Okta through read-only OAuth scopes (<code>okta.users.read</code>, <code>okta.groups.read</code>, <code>okta.logs.read</code>) combining real-time Event Hooks with System Log polling. The service holds zero write credentials in either directory.</p>
+    <p><strong>Dynamic group and role mapping:</strong> Maps directory groups directly to LiteLLM teams and roles (<code>proxy_admin</code>, <code>internal_user</code>) with configurable precedence rules.</p>
+    <p><strong>Automated budget tiering:</strong> Binds departments or directory groups to rolling monthly spend limits and model allowlists, ensuring developers get the models they need while preventing runaway spending.</p>
+    <p><strong>Transactional outbox reliability:</strong> Stores every lifecycle event in a PostgreSQL outbox table within the same database transaction as the state change. A decoupled worker pulls events using <code>FOR UPDATE SKIP LOCKED</code> and calls LiteLLM endpoints with exponential backoff, surviving gateway restarts and network partitions.</p>
+    <p><strong>Safety-first reconciliation:</strong> Runs scheduled sweeps with a two-miss rule to protect against accidental mass revocation during directory timeouts, dry-run validation, and allowlists for non-human service accounts.</p>
+
+    <h3>How it is configured</h3>
+    <p>All settings are declared in <code>config/config.yaml</code>, using environment variable references (<code>os.environ/VAR</code>) for credentials and host endpoints so that secrets never enter source control:</p>
+    <ul>
+      <li><code>identity_sources</code>: Configures connections for Active Directory (server, search base, group DN, bind credentials, and USN polling intervals) and Okta (org URL, OAuth private key, group ID, and System Log cursor settings).</li>
+      <li><code>group_mappings</code>: Maps directory groups to LiteLLM teams and roles with explicit precedence levels.</li>
+      <li><code>budget_policies</code> and <code>budget_mappings</code>: Declares monthly spend caps and durations (such as $100 for engineering and $50 for standard users) and assigns them by group or department attribute.</li>
+      <li><code>gateway</code>: Specifies the LiteLLM base URL and administrative master key.</li>
+      <li><code>reconciliation</code>: Configures the cron schedule, dry-run flag, grace period, and two-miss rule state table.</li>
+    </ul>
+    <p>With this configuration in place, the service runs as a lightweight container alongside LiteLLM, continuously translating identity and organizational changes into real-time gateway access rules.</p>
+
+    <h2>9. Platform engineer access checklist</h2>
+    <p>Before putting an AI gateway into production, verify access governance against five baseline requirements:</p>
+    <ol>
+      <li><strong>Cap token lifespans:</strong> Disable non-expiring API keys and require developer credentials to rotate within 90 days.</li>
+      <li><strong>Automate offboarding:</strong> Ensure employee terminations revoke gateway bearer keys within 15 minutes.</li>
+      <li><strong>Restrict directory permissions:</strong> Keep directory connectors strictly read-only, limiting write credentials to gateway APIs.</li>
+      <li><strong>Buffer gateway mutations:</strong> Use a transactional outbox table so that gateway restarts and rate limits do not drop lifecycle events.</li>
+      <li><strong>Enforce safety circuits:</strong> Add consecutive-miss requirements and blast-radius caps to prevent network errors from triggering bulk key revocations.</li>
+    </ol>
+    <p>A gateway handles model routing, load balancing, and token accounting. Protecting corporate data and model budgets requires an automated control plane that tracks identity changes in the directory and updates gateway credentials the moment they occur.</p>
+  </article>
+</main>
+</body>
+</html>
