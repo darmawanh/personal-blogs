@@ -55,6 +55,10 @@
   ul{margin:0 0 22px;padding-left:26px}
   ol{margin:0 0 22px;padding-left:26px}
   li{margin:0 0 10px}
+  .tableimg{
+    margin:28px 0;border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff;
+  }
+  .tableimg img{display:block;width:100%;height:auto;border-radius:4px;margin:0}
   pre{
     background:var(--code-bg);border:1px solid var(--line);border-radius:6px;
     padding:16px 18px;overflow-x:auto;margin:0 0 24px;
@@ -64,9 +68,6 @@
   pre code{font-family:inherit;white-space:pre;background:none;padding:0;font-size:inherit}
   code{font-family:"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:.86em;
     background:#f2f2f2;padding:2px 5px;border-radius:4px}
-  table{width:100%;border-collapse:collapse;margin:28px 0;font-size:15px;display:block;overflow-x:auto}
-  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left}
-  th{background:var(--code-bg);font-weight:700}
 </style>
 </head>
 <body>
@@ -104,40 +105,15 @@
     <p>Programmatic access runs through the gateway. Developers generate long-lived bearer tokens (<code>sk-...</code>) for terminal workflows, automated test suites, batch pipelines, and code editor extensions. These API keys often lack expiration dates and bypass the identity provider entirely, sending requests straight to the gateway reverse proxy.</p>
     <p>Organizations often expect Just-In-Time (JIT) provisioning through Single Sign-On to handle access governance. JIT provisioning works well when a user opens the LiteLLM dashboard in a browser, reading incoming SAML attributes to create the user account on demand. But JIT handles only interactive logins. Departing employees never log in through the dashboard again, so JIT hooks never fire. As a result, existing API keys stay active, team budget allocations remain open, and old group permissions persist until someone intervenes by hand.</p>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Lifecycle phase</th>
-          <th>HR system event</th>
-          <th>Directory state (AD / Okta)</th>
-          <th>Gateway state (without sync)</th>
-          <th>Gateway state (with directory sync)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Join</td>
-          <td>Employee hired into ML Engineering</td>
-          <td>User created, added to <code>AI-Platform-Users</code></td>
-          <td>User missing; cannot generate keys until first SSO dashboard visit</td>
-          <td>User pre-provisioned, team assigned, $250 monthly budget granted</td>
-        </tr>
-        <tr>
-          <td>Move</td>
-          <td>Transfer from ML to Customer Support</td>
-          <td>Group changed from <code>ML-Tier1</code> to <code>Support-Basic</code></td>
-          <td>Old keys retain access to expensive models (Claude 3.5 Sonnet, GPT-4o)</td>
-          <td>Keys revoked, models restricted to Haiku and Mini, budget lowered to $50</td>
-        </tr>
-        <tr>
-          <td>Leave</td>
-          <td>Immediate resignation or termination</td>
-          <td>Account disabled, sessions killed</td>
-          <td>Keys (<code>sk-...</code>) remain active indefinitely, unmonitored spend continues</td>
-          <td>Keys blocked immediately (&lt;15 min SLA), user deleted after grace period</td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="tableimg">
+      <img src="https://darmawanh.github.io/personal-blogs/ai-gateway-access/img/table-lifecycle.png" alt="Lifecycle comparison across Join, Move, and Leave state transitions">
+    </div>
+
+    <p><strong>Join (onboarding):</strong> In Active Directory or Okta, the employee is created and added to <code>AI-Platform-Users</code>. Without automated sync, the user is missing in LiteLLM and cannot generate keys until their first interactive SSO visit. With automated sync, the account is pre-provisioned, assigned to the engineering team, and granted a $250 monthly budget before day one.</p>
+
+    <p><strong>Move (internal transfer):</strong> When an engineer transfers from research to customer support, their directory group changes from <code>ML-Tier1</code> to <code>Support-Basic</code>. Without sync, existing keys retain access to expensive models (Claude 3.5 Sonnet, GPT-4o). With sync, those keys are revoked, allowed models are restricted to lightweight utility models (Haiku and Mini), and the monthly budget drops to $50.</p>
+
+    <p><strong>Leave (offboarding):</strong> When an employee resigns or is terminated, IT disables their directory account and kills interactive sessions. Without sync, programmatic bearer tokens (<code>sk-...</code>) remain valid indefinitely, allowing unmonitored scripts to continue running up costs. With sync, keys are blocked immediately under a 15-minute SLA, token caches are purged, and the account is scheduled for deletion after a grace period.</p>
 
     <h2>5. Architecture of an identity-to-gateway bridge</h2>
     <p>Closing the gap requires a background synchronization service that connects enterprise directories directly to LiteLLM.</p>
